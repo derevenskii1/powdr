@@ -14,6 +14,7 @@ pub struct ParseError<'a> {
 }
 
 impl<'a> ParseError<'a> {
+    /// Outputs the parse error details to stderr using `codespan-reporting`.
     pub fn output_to_stderr(&self) {
         use codespan_reporting::diagnostic::{Diagnostic, Label};
         use codespan_reporting::files::SimpleFiles;
@@ -36,32 +37,24 @@ pub fn handle_parse_error<'a>(
     file_name: Option<&str>,
     input: &'a str,
 ) -> ParseError<'a> {
-    let (&start, &end) = match &err {
-        lalrpop_util::ParseError::InvalidToken { location } => (location, location),
-        lalrpop_util::ParseError::UnrecognizedEOF {
-            location,
-            expected: _,
-        } => (location, location),
-        lalrpop_util::ParseError::UnrecognizedToken {
-            token: (start, _, end),
-            expected: _,
-        } => (start, end),
-        lalrpop_util::ParseError::ExtraToken {
-            token: (start, _, end),
-        } => (start, end),
-        lalrpop_util::ParseError::User { error: _ } => (&0, &0),
+    let (start, end) = match &err {
+        lalrpop_util::ParseError::InvalidToken { location } => (*location, *location),
+        lalrpop_util::ParseError::UnrecognizedEOF { location, expected: _ } => (*location, *location),
+        lalrpop_util::ParseError::UnrecognizedToken { token: (start, _, end), expected: _ } => (*start, *end),
+        lalrpop_util::ParseError::ExtraToken { token: (start, _, end) } => (*start, *end),
+        lalrpop_util::ParseError::User { error: _ } => (0, 0),
     };
     ParseError {
         start,
         end,
         file_name: file_name.unwrap_or("input").to_string(),
         contents: input,
-        message: format!("{err}"),
+        message: format!("Parsing error: {}", err),
     }
 }
 
-/// Convenience trait that outputs parser errors to stderr and panics.
-/// Should be used mostly in tests.
+/// Trait for unwrapping `Result` types with `ParseError` and printing errors to stderr.
+/// Useful for quickly debugging errors in tests or development.
 pub trait UnwrapErrToStderr {
     type Inner;
     fn unwrap_err_to_stderr(self) -> Self::Inner;
@@ -72,10 +65,10 @@ impl<'a, T> UnwrapErrToStderr for Result<T, ParseError<'a>> {
 
     fn unwrap_err_to_stderr(self) -> Self::Inner {
         match self {
-            Ok(r) => r,
+            Ok(result) => result,
             Err(err) => {
                 err.output_to_stderr();
-                panic!("Parse error.");
+                panic!("A parse error occurred.");
             }
         }
     }
